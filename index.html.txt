@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>LAST RESIST - 現代サバイバル</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body { background: #111; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+  #game-container { position: relative; width: 100vw; height: 100vh; max-width: 900px; max-height: 600px; background: #222; border: 2px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+  canvas { width: 100%; height: 100%; display: block; }
+  
+  /* UI Overlay */
+  .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; }
+  .hud-top { display: flex; justify-content: space-between; align-items: flex-start; text-shadow: 1px 1px 3px #000; }
+  .stat-bar { width: 180px; height: 16px; background: rgba(0,0,0,0.6); border: 1px solid #FFF; border-radius: 8px; overflow: hidden; margin-bottom: 5px; position: relative; }
+  .stat-fill { height: 100%; transition: width 0.1s; }
+  #hp-fill { background: linear-gradient(90deg, #ff4d4d, #ff1a1a); }
+  #exp-fill { background: linear-gradient(90deg, #4da6ff, #0066cc); }
+  #ult-fill { background: linear-gradient(90deg, #ffd700, #ff8c00); }
+  .bar-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; font-size: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+  /* Controls Overlay for Mobile */
+  .touch-controls { position: absolute; bottom: 15px; left: 15px; right: 15px; display: flex; justify-content: space-between; align-items: flex-end; pointer-events: auto; }
+  .joystick-zone { width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); position: relative; touch-action: none; }
+  .joystick-knob { width: 50px; height: 50px; background: rgba(255,255,255,0.5); border-radius: 50%; position: absolute; top: 35px; left: 35px; pointer-events: none; }
+  .action-btns { display: flex; gap: 10px; }
+  .btn { width: 60px; height: 60px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 2px solid #fff; color: #fff; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 12px; cursor: pointer; text-shadow: 1px 1px 2px #000; }
+  .btn:active { transform: scale(0.95); background: rgba(255,255,255,0.3); }
+  #btn-ult { border-color: #ffd700; color: #ffd700; }
+
+  /* Modals */
+  .modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; z-index: 10; text-align: center; padding: 20px; }
+  .modal h1 { font-size: 32px; color: #4da6ff; margin-bottom: 10px; letter-spacing: 2px; }
+  .modal p { font-size: 14px; color: #ccc; margin-bottom: 20px; max-width: 500px; line-height: 1.6; }
+  .modal-btn { padding: 12px 30px; font-size: 16px; background: #4da6ff; color: #fff; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; transition: 0.2s; margin: 5px; }
+  .modal-btn:hover { background: #0066cc; transform: scale(1.05); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+  <canvas id="canvas" width="900" height="600"></canvas>
+
+  <!-- UI HUD -->
+  <div class="ui-layer">
+    <div class="hud-top">
+      <div>
+        <div style="font-size: 12px; margin-bottom: 2px;">HP</div>
+        <div class="stat-bar"><div id="hp-fill" class="stat-fill" style="width: 100%;"></div><div id="hp-text" class="bar-text">100 / 100</div></div>
+        <div style="font-size: 12px; margin-bottom: 2px;">EXP (Lv.<span id="level-val">1</span>)</div>
+        <div class="stat-bar"><div id="exp-fill" class="stat-fill" style="width: 0%;"></div><div id="exp-text" class="bar-text">0 / 50</div></div>
+        <div style="font-size: 12px; margin-bottom: 2px;">ULTIMATE</div>
+        <div class="stat-bar"><div id="ult-fill" class="stat-fill" style="width: 0%;"></div><div id="ult-text" class="bar-text">0%</div></div>
+      </div>
+      <div style="text-align: right;">
+        <div id="stage-title" style="font-size: 18px; font-weight: bold; color: #ffeb3b;">STAGE 1: 崩壊した都市</div>
+        <div style="font-size: 12px; color: #aaa;">武器: <span id="weapon-val" style="color:#fff;">ハンドガン</span> [Qキー/ボタンで切替]</div>
+        <div style="font-size: 12px; color: #aaa;">撃破数: <span id="kill-val" style="color:#fff;">0</span></div>
+      </div>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div class="touch-controls">
+      <div class="joystick-zone" id="joystick">
+        <div class="joystick-knob" id="knob"></div>
+      </div>
+      <div class="action-btns">
+        <div class="btn" id="btn-weapon">武器<br>切替</div>
+        <div class="btn" id="btn-ult">必殺技<br>[E]</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Start / Story Modal -->
+  <div id="start-modal" class="modal">
+    <h1>LAST RESIST</h1>
+    <p>【ストーリー】<br>突如出現した未知の生物により崩壊した近未来都市。<br>生き残った特殊部隊員として、迫りくる脅威を排除し、最終エリアを目指せ！</p>
+    <p style="font-size: 12px; color: #888;">【操作方法】<br>PC: [WASD]移動 / [マウス]照準＆自動攻撃 / [Q]武器変更 / [E]必殺技<br>スマホ: [左スティック]移動 / 自動照準＆攻撃 / [ボタン]切替・必殺技</p>
+    <button class="modal-btn" id="start-btn">作戦開始</button>
+  </div>
+
+  <!-- Game Over Modal -->
+  <div id="gameover-modal" class="modal hidden">
+    <h1 style="color: #ff4d4d;">MISSION FAILED</h1>
+    <p>作戦行動中に殉職しました。</p>
+    <button class="modal-btn" id="restart-btn">再挑戦</button>
+  </div>
+
+  <!-- Stage Clear Modal -->
+  <div id="clear-modal" class="modal hidden">
+    <h1 style="color: #4dff88;">STAGE CLEAR</h1>
+    <p id="clear-text">エリアの全敵を排除しました！</p>
+    <button class="modal-btn" id="next-btn">次のステージへ</button>
+  </div>
+</div>
+
+<script>
+// --- GAME ENGINE & CONFIG ---
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// State
+let gameState = 'START'; // START, PLAYING, GAMEOVER, CLEAR
+let stage = 1;
+let kills = 0;
+let keys = {};
+let joystickVector = { x: 0, y: 0 };
+let mousePos = { x: canvas.width / 2, y: canvas.height / 2 };
+
+// Save Data System
+const SaveSystem = {
+  save: function() {
+    const data = { stage: stage, level: player.level, exp: player.exp, maxHp: player.maxHp };
+    localStorage.setItem('last_resist_save', JSON.stringify(data));
+  },
+  load: function() {
+    const data = localStorage.getItem('last_resist_save');
+    if (data) {
+      const parsed = JSON.parse(data);
+      stage = parsed.stage || 1;
+      player.level = parsed.level || 1;
+      player.exp = parsed.exp || 0;
+      player.maxHp = parsed.maxHp || 100;
+      player.hp = player.maxHp;
+    }
+  }
+};
+
+// Player Object
+const player = {
+  x: 450, y: 300, radius: 15, speed: 3.5,
+  hp: 100, maxHp: 100, level: 1, exp: 0, nextExp: 50,
+  ultGauge: 0, maxUlt: 100,
+  currentWeaponIndex: 0,
+  lastShot: 0,
+  angle: 0
+};
+
+// Weapons Definition
+const weapons = [
+  { name: 'ハンドガン', fireRate: 250, damage: 25, speed: 10, color: '#ffff00', count: 1, spread: 0 },
+  { name: 'ショットガン', fireRate: 600, damage: 18, speed: 8, color: '#ffa500', count: 5, spread: 0.4 },
+  { name: 'アサルトライフル', fireRate: 100, damage: 14, speed: 12, color: '#00ffff', count: 1, spread: 0.1 }
+];
+
+// Stage Definitions
+const stageConfigs = [
+  { name: "STAGE 1: 崩壊した都市", bg: "#1a1a24", maxKills: 20, bossSpawned: false },
+  { name: "STAGE 2: 汚染研究所", bg: "#14241a", maxKills: 35, bossSpawned: false },
+  { name: "STAGE 3: 最終防衛線", bg: "#241414", maxKills: 50, bossSpawned: false }
+];
+
+let bullets = [];
+let enemies = [];
+let particles = [];
+
+// --- CONTROLS ---
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if(e.key.toLowerCase() === 'q') switchWeapon(); if(e.key.toLowerCase() === 'e') triggerUltimate(); });
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mousePos.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+  mousePos.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+});
+
+// Touch / Joystick
+const joystick = document.getElementById('joystick');
+const knob = document.getElementById('knob');
+let joyActive = false;
+let joyStart = { x: 0, y: 0 };
+
+joystick.addEventListener('touchstart', e => {
+  joyActive = true;
+  const touch = e.touches[0];
+  joyStart = { x: touch.clientX, y: touch.clientY };
+});
+window.addEventListener('touchmove', e => {
+  if (!joyActive) return;
+  const touch = e.touches[0];
+  const dx = touch.clientX - joyStart.x;
+  const dy = touch.clientY - joyStart.y;
+  const dist = Math.min(Math.hypot(dx, dy), 40);
+  const angle = Math.atan2(dy, dx);
+  knob.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+  joystickVector = { x: Math.cos(angle) * (dist/40), y: Math.sin(angle) * (dist/40) };
+});
+window.addEventListener('touchend', () => {
+  joyActive = false;
+  knob.style.transform = `translate(0px, 0px)`;
+  joystickVector = { x: 0, y: 0 };
+});
+
+document.getElementById('btn-weapon').addEventListener('click', switchWeapon);
+document.getElementById('btn-ult').addEventListener('click', triggerUltimate);
+
+function switchWeapon() {
+  player.currentWeaponIndex = (player.currentWeaponIndex + 1) % weapons.length;
+  document.getElementById('weapon-val').innerText = weapons[player.currentWeaponIndex].name;
+}
+
+function triggerUltimate() {
+  if (player.ultGauge < player.maxUlt) return;
+  player.ultGauge = 0;
+  // Screen-clearing Ultimate Attack
+  for (let i = 0; i < 36; i++) {
+    const angle = (Math.PI * 2 / 36) * i;
+    bullets.push({
+      x: player.x, y: player.y,
+      vx: Math.cos(angle) * 12, vy: Math.sin(angle) * 12,
+      damage: 150, color: '#ffd700', radius: 6
+    });
+  }
+  // Visual FX
+  createExplosion(player.x, player.y, '#ffd700', 50);
+}
+
+// --- GAME LOGIC ---
+function spawnEnemy(isBoss = false) {
+  const edge = Math.floor(Math.random() * 4);
+  let x, y;
+  if (edge === 0) { x = Math.random() * canvas.width; y = -30; }
+  else if (edge === 1) { x = canvas.width + 30; y = Math.random() * canvas.height; }
+  else if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 30; }
+  else { x = -30; y = Math.random() * canvas.height; }
+
+  enemies.push({
+    x: x, y: y,
+    radius: isBoss ? 35 : 12 + Math.random() * 6,
+    speed: isBoss ? 1.2 : 1.5 + Math.random() * 1.5,
+    hp: isBoss ? 600 * stage : 30 * stage,
+    maxHp: isBoss ? 600 * stage : 30 * stage,
+    color: isBoss ? '#ff0055' : (Math.random() > 0.5 ? '#e74c3c' : '#9b59b6'),
+    isBoss: isBoss
+  });
+}
+
+function createExplosion(x, y, color, count = 10) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: x, y: y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6,
+      life: 20 + Math.random() * 10,
+      color: color
+    });
+  }
+}
+
+function shoot() {
+  const now = Date.now();
+  const w = weapons[player.currentWeaponIndex];
+  if (now - player.lastShot < w.fireRate) return;
+  player.lastShot = now;
+
+  let targetAngle = player.angle;
+  
+  // Auto-aim closest enemy on mobile if not using mouse
+  if (joyActive && enemies.length > 0) {
+    let closest = enemies[0];
+    let minDist = Math.hypot(enemies[0].x - player.x, enemies[0].y - player.y);
+    enemies.forEach(e => {
+      let d = Math.hypot(e.x - player.x, e.y - player.y);
+      if(d < minDist) { minDist = d; closest = e; }
+    });
+    targetAngle = Math.atan2(closest.y - player.y, closest.x - player.x);
+  }
+
+  for (let i = 0; i < w.count; i++) {
+    const finalAngle = targetAngle + (Math.random() - 0.5) * w.spread;
+    bullets.push({
+      x: player.x, y: player.y,
+      vx: Math.cos(finalAngle) * w.speed,
+      vy: Math.sin(finalAngle) * w.speed,
+      damage: w.damage, color: w.color, radius: 3
+    });
+  }
+}
+
+function update() {
+  if (gameState !== 'PLAYING') return;
+
+  // Movement
+  let moveX = 0; let moveY = 0;
+  if (keys['w'] || keys['arrowup']) moveY -= 1;
+  if (keys['s'] || keys['arrowdown']) moveY += 1;
+  if (keys['a'] || keys['arrowleft']) moveX -= 1;
+  if (keys['d'] || keys['arrowright']) moveX += 1;
+
+  if (joyActive) { moveX = joystickVector.x; moveY = joystickVector.y; }
+
+  const len = Math.hypot(moveX, moveY);
+  if (len > 0) {
+    player.x += (moveX / (len > 1 ? len : 1)) * player.speed;
+    player.y += (moveY / (len > 1 ? len : 1)) * player.speed;
+  }
+
+  // Restrict to screen
+  player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+  player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
+
+  // Player Angle
+  if (!joyActive) {
+    player.angle = Math.atan2(mousePos.y - player.y, mousePos.x - player.x);
+  } else if (Math.hypot(moveX, moveY) > 0.1) {
+    player.angle = Math.atan2(moveY, moveX);
+  }
+
+  shoot();
+
+  // Spawning Logic
+  const cfg = stageConfigs[stage - 1];
+  if (kills < cfg.maxKills && enemies.length < 8 + stage * 3) {
+    if (Math.random() < 0.03) spawnEnemy(false);
+  } else if (kills >= cfg.maxKills && !cfg.bossSpawned) {
+    cfg.bossSpawned = true;
+    spawnEnemy(true);
+  }
+
+  // Update Bullets
+  bullets.forEach((b, bi) => {
+    b.x += b.vx; b.y += b.vy;
+    if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(bi, 1);
+  });
+
+  // Update Enemies
+  enemies.forEach((e, ei) => {
+    const angle = Math.atan2(player.y - e.y, player.x - e.x);
+    e.x += Math.cos(angle) * e.speed;
+    e.y += Math.sin(angle) * e.speed;
+
+    // Player collision
+    if (Math.hypot(player.x - e.x, player.y - e.y) < player.radius + e.radius) {
+      player.hp -= e.isBoss ? 2 : 0.5;
+      if (player.hp <= 0) {
+        player.hp = 0;
+        gameState = 'GAMEOVER';
+        document.getElementById('gameover-modal').classList.remove('hidden');
+      }
+    }
+
+    // Bullet collision
+    bullets.forEach((b, bi) => {
+      if (Math.hypot(b.x - e.x, b.y - e.y) < b.radius + e.radius) {
+        e.hp -= b.damage;
+        createExplosion(b.x, b.y, b.color, 3);
+        bullets.splice(bi, 1);
+
+        if (e.hp <= 0) {
+          createExplosion(e.x, e.y, e.color, e.isBoss ? 30 : 12);
+          enemies.splice(ei, 1);
+          kills++;
+          
+          // Gain EXP & ULT
+          player.exp += e.isBoss ? 100 : 15;
+          player.ultGauge = Math.min(player.maxUlt, player.ultGauge + (e.isBoss ? 30 : 8));
+
+          // Level Up
+          if (player.exp >= player.nextExp) {
+            player.level++;
+            player.exp -= player.nextExp;
+            player.nextExp = Math.floor(player.nextExp * 1.4);
+            player.maxHp += 15;
+            player.hp = player.maxHp; // Full Heal
+          }
+
+          // Stage Clear Check
+          if (e.isBoss) {
+            SaveSystem.save();
+            if (stage < stageConfigs.length) {
+              gameState = 'CLEAR';
+              document.getElementById('clear-text').innerText = `${stageConfigs[stage-1].name} 攻略完了！`;
+              document.getElementById('clear-modal').classList.remove('hidden');
+            } else {
+              gameState = 'CLEAR';
+              document.getElementById('clear-text').innerText = `全ステージクリア！世界に平和が戻った！`;
+              document.getElementById('next-btn').innerText = `最初から遊ぶ`;
+              document.getElementById('clear-modal').classList.remove('hidden');
+            }
+          }
+        }
+      }
+    });
+  });
+
+  // Update Particles
+  particles.forEach((p, pi) => {
+    p.x += p.vx; p.y += p.vy; p.life--;
+    if (p.life <= 0) particles.splice(pi, 1);
+  });
+
+  updateUI();
+}
+
+function updateUI() {
+  document.getElementById('hp-fill').style.width = `${(player.hp / player.maxHp) * 100}%`;
+  document.getElementById('hp-text').innerText = `${Math.ceil(player.hp)} / ${player.maxHp}`;
+  document.getElementById('exp-fill').style.width = `${(player.exp / player.nextExp) * 100}%`;
+  document.getElementById('exp-text').innerText = `${player.exp} / ${player.nextExp}`;
+  document.getElementById('ult-fill').style.width = `${(player.ultGauge / player.maxUlt) * 100}%`;
+  document.getElementById('ult-text').innerText = `${Math.floor((player.ultGauge / player.maxUlt) * 100)}%`;
+  document.getElementById('level-val').innerText = player.level;
+  document.getElementById('kill-val').innerText = kills;
+}
+
+// --- RENDER ---
+function draw() {
+  ctx.fillStyle = stageConfigs[stage - 1].bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw Grid Effect
+  ctx.strokeStyle = "rgba(255,255,255,0.03)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+  for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+
+  if (gameState === 'PLAYING' || gameState === 'CLEAR') {
+    // Particles
+    particles.forEach(p => {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, 3, 3);
+    });
+
+    // Bullets
+    bullets.forEach(b => {
+      ctx.fillStyle = b.color;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Enemies
+    enemies.forEach(e => {
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2); ctx.fill();
+      // Boss Inner Ring
+      if (e.isBoss) {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(e.x, e.y, e.radius * 0.6, 0, Math.PI * 2); ctx.stroke();
+      }
+      // Health Bar
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(e.x - e.radius, e.y - e.radius - 8, e.radius * 2, 4);
+      ctx.fillStyle = '#ff4d4d';
+      ctx.fillRect(e.x - e.radius, e.y - e.radius - 8, (e.radius * 2) * (e.hp / e.maxHp), 4);
+    });
+
+    // Player (Modern Style Vector Illustration)
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.angle);
+    
+    // Gun Body
+    ctx.fillStyle = '#555';
+    ctx.fillRect(5, 3, 15, 5);
+    
+    // Player Body
+    ctx.fillStyle = '#4da6ff';
+    ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+    // Player Visor / Head
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.arc(4, 0, 8, -Math.PI/2, Math.PI/2); ctx.fill();
+
+    ctx.restore();
+  }
+
+  requestAnimationFrame(() => { update(); draw(); });
+}
+
+// --- INITIALIZATION ---
+function resetStage() {
+  bullets = []; enemies = []; particles = []; kills = 0;
+  player.x = canvas.width / 2; player.y = canvas.height / 2;
+  stageConfigs[stage - 1].bossSpawned = false;
+  document.getElementById('stage-title').innerText = stageConfigs[stage - 1].name;
+}
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  SaveSystem.load();
+  resetStage();
+  document.getElementById('start-modal').classList.add('hidden');
+  gameState = 'PLAYING';
+});
+
+document.getElementById('restart-btn').addEventListener('click', () => {
+  player.hp = player.maxHp;
+  resetStage();
+  document.getElementById('gameover-modal').classList.add('hidden');
+  gameState = 'PLAYING';
+});
+
+document.getElementById('next-btn').addEventListener('click', () => {
+  if (stage < stageConfigs.length) {
+    stage++;
+  } else {
+    stage = 1; player.level = 1; player.exp = 0; player.maxHp = 100;
+  }
+  player.hp = player.maxHp;
+  resetStage();
+  document.getElementById('clear-modal').classList.add('hidden');
+  gameState = 'PLAYING';
+});
+
+draw();
+</script>
+</body>
+</html>
